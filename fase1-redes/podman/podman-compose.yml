@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  servidor:
+    build:
+      context: ..
+      dockerfile: podman/Containerfile
+    container_name: fase1-servidor
+    command: ["python3", "/app/servico_alvo/servidor.py", "--host", "0.0.0.0", "--porta", "5050"]
+    networks:
+      fase1_net:
+        ipv4_address: 10.89.0.10
+
+  cliente:
+    build:
+      context: ..
+      dockerfile: podman/Containerfile
+    container_name: fase1-cliente
+    command: ["sleep", "infinity"]
+    networks:
+      fase1_net:
+        ipv4_address: 10.89.0.11
+
+  observador:
+    build:
+      context: ..
+      dockerfile: podman/Containerfile
+    container_name: fase1-observador
+    command: ["sleep", "infinity"]
+    # O observador precisa compartilhar a pilha de rede do cliente para que
+    # seu socket raw enxergue o tráfego cliente <-> servidor neste laboratório.
+    network_mode: "service:cliente"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      - servidor
+      - cliente
+
+networks:
+  fase1_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
