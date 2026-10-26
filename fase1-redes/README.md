@@ -347,3 +347,104 @@ Os detalhes da execução e os pacotes observados estão documentados em `RELATO
 - A insegurança do protocolo é **intencional** e existe para demonstrar a quebra de confidencialidade.
 - Nesta fase não há modificação do tráfego.
 - A proteção do protocolo será abordada nas fases posteriores do trabalho.
+
+---
+
+# Fase 2 — Interceptação e alteração de mensagens (MITM)
+
+Esta fase amplia o laboratório CVP para demonstrar como um intermediário
+pode modificar mensagens de aplicação transmitidas em texto claro.
+
+## 10. Topologia da Fase 2
+
+A demonstração foi validada no ambiente Podman do Codespace.
+
+```text
+Cliente                 Proxy MITM                 Servidor CVP
+10.89.0.3               10.89.0.12                 10.89.0.10
+                        TCP/5051                   TCP/5050
+
+   SET cofre_saldo 15000
+          -------------------->
+                     Proxy altera a mensagem
+                     SET cofre_saldo 90000
+                                 -------------------->
+                                                Servidor grava 90000
+          <-----------------------------------------------
+                     OK cofre_saldo=90000
+```
+
+O cliente conecta-se à porta TCP 5051 do proxy. O proxy abre uma
+segunda conexão TCP com o servidor CVP na porta 5050.
+
+## 11. Como executar a Fase 2
+
+Na raiz do projeto, construa a imagem e inicie o laboratório:
+
+```bash
+./scripts/podman-lab.sh build
+./scripts/podman-lab.sh up
+```
+
+Inicie o proxy em um terminal:
+
+```bash
+./scripts/podman-lab.sh proxy
+```
+
+Em outro terminal, execute o cliente apontando para o proxy:
+
+```bash
+podman exec fase1-cliente python3 /app/servico_alvo/cliente.py \
+  --host 10.89.0.12 --porta 5051 --demo
+```
+
+O teste demonstrado envia `SET cofre_saldo 15000`. A regra do proxy
+substitui essa mensagem por `SET cofre_saldo 90000` antes de encaminhá-la
+ao servidor.
+
+A resposta esperada para a leitura posterior é:
+
+```text
+OK cofre_saldo=90000
+```
+
+Para consultar o log do proxy:
+
+```bash
+podman logs --tail 60 fase2-mitm
+```
+
+Para encerrar os containers do laboratório:
+
+```bash
+./scripts/podman-lab.sh down
+```
+
+## 12. Evidências da Fase 2
+
+Os arquivos estão organizados em `evidencias/fase2/`:
+
+- `fase2-mitm.pcap`: captura do tráfego entre o proxy e o servidor CVP.
+- `01-wireshark-pacotes.png`: lista de pacotes da captura no Wireshark.
+- `02-wireshark-fluxo-tcp.png`: conversa TCP reconstruída.
+- `02-concorrencia.png`: registro do teste de concorrência.
+- `01-proxy-alteracao.png` e `03-proxy-alteracao.png`: registros do log
+  da alteração feita pelo proxy.
+
+A captura foi analisada com `tshark`, que identificou uma conversa TCP
+entre `10.89.0.12:34236` e `10.89.0.10:5050`, contendo 28 quadros.
+
+O fluxo reconstruído mostrou mensagens CVP em texto claro, incluindo
+`LOGIN`, `SET`, `MSG`, `GET`, `LIST` e `QUIT`, bem como a resposta
+`OK cofre_saldo=90000`.
+
+O log do proxy registrou a substituição de
+`SET cofre_saldo 15000` por `SET cofre_saldo 90000`.
+
+**Limitação da evidência:** o PCAP documentado nesta fase representa
+o trecho proxy-servidor. Não deve ser interpretado como uma captura
+simultânea dos dois trechos TCP da conexão.
+
+O ambiente Podman foi usado para desenvolvimento e validação. Ele não
+equivale a três máquinas virtuais independentes.

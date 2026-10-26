@@ -8,7 +8,7 @@ POD="fase1-cliente-observador"
 SERVER="fase1-servidor"
 CLIENT="fase1-cliente"
 OBSERVER="fase1-observador"
-
+MITM="fase2-mitm"
 usage() {
   cat <<USAGE
 Uso: $0 <comando>
@@ -23,6 +23,7 @@ Comandos:
   observer    abre shell no observador
   sniffer     inicia o sniffer dentro do observador
   demo        executa o cliente em modo demo
+  proxy       inicia o proxy MITM da fase 2
 USAGE
 }
 
@@ -63,7 +64,18 @@ status() {
   podman inspect "$SERVER" --format 'servidor: {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true
   podman inspect "$CLIENT" --format 'cliente/observador: {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true
 }
+proxy() {
+  podman rm -f "$MITM" >/dev/null 2>&1 || true
 
+  podman run -d --name "$MITM" --network "$NET" --ip 10.89.0.12 \
+    "$IMAGE" python3 /app/mitm/proxy.py \
+    --host 0.0.0.0 \
+    --porta 5051 \
+    --host-servidor 10.89.0.10 \
+    --porta-servidor 5050
+
+  podman logs -f "$MITM"
+}
 case "${1:-}" in
   build) build ;;
   up) up ;;
@@ -74,5 +86,6 @@ case "${1:-}" in
   observer) podman exec -it "$OBSERVER" bash ;;
   sniffer) podman exec -it "$OBSERVER" python3 /app/sniffer/sniffer.py --porta 5050 --iface eth0 ;;
   demo) podman exec -it "$CLIENT" python3 /app/servico_alvo/cliente.py --host 10.89.0.10 --porta 5050 --demo ;;
+  proxy) proxy ;;
   *) usage; exit 1 ;;
 esac
